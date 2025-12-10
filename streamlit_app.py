@@ -4,7 +4,6 @@ import folium
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 from io import BytesIO
-import matplotlib.pyplot as plt
 import re
 
 st.title("Santa Barbara Restaurant Analysis")
