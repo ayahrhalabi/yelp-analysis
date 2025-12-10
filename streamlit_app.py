@@ -3,14 +3,31 @@ import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
+from io import BytesIO
+from wordcloud import WordCloud, STOPWORDS
+import matplotlib.pyplot as plt
+import re
 
-st.title("Santa Barbara Restaurent Analysis")
+st.title("Santa Barbara Restaurant Analysis")
 st.write(
-    "This webpage represents some visualization on some restaurents found "
-    "in the Yelp Dataset in the city of Santa Barbara"
+    "This webpage contains visualizations for restaurants from the Yelp dataset "
+    "in Santa Barbara."
 )
 
-df = pd.read_csv('ca_rest.csv')
+# -------- Load Data from HuggingFace --------
+@st.cache_data
+def load_business_data():
+    url = "https://huggingface.co/datasets/ayahhalabi/yelp_ca_reviews/resolve/main/ca_bus.csv"
+    return pd.read_csv(url)
+
+@st.cache_data
+def load_reviews_data():
+    url = "https://huggingface.co/datasets/ayahhalabi/yelp_ca_reviews/resolve/main/ca_reviews.csv"
+    return pd.read_csv(url)
+
+df = load_business_data()
+df_rev = load_reviews_data()
+
 df_unique = df.drop_duplicates(subset="business_id", keep="first")
 
 # -------- FILTERS AT TOP ----------
@@ -19,9 +36,8 @@ colf1, colf2 = st.columns(2)
 with colf1:
     category = st.selectbox(
         "Select Cuisine Category",
-        sorted(df_unique["categories"].unique())
+        sorted(df_unique["categories_grouped"].unique())
     )
-
 with colf2:
     min_star, max_star = st.slider(
         "Select Star Rating Range",
@@ -33,14 +49,14 @@ with colf2:
 
 # -------- APPLY FILTERS ----------
 filtered = df_unique[
-    (df_unique["categories"] == category) &
+    (df_unique["categories_grouped"] == category) &
     (df_unique["stars"].between(min_star, max_star))
 ]
 
-# -------- TABLE FIRST ----------
+# -------- TABLE ----------
 st.subheader("Restaurants")
 st.dataframe(
-    filtered[["name", "address", "stars"]],
+    filtered[["name", "address", "postal_code", "stars"]],
     hide_index=True,
     use_container_width=True
 )
@@ -54,6 +70,8 @@ else:
     center = [df_unique["latitude"].mean(), df_unique["longitude"].mean()]
 
 m = folium.Map(location=center, zoom_start=13)
+
+# ICONS
 cat_to_emoji = {
     "American (New)": "🍔",
     "Mexican": "🌮",
@@ -94,82 +112,60 @@ cat_to_emoji = {
     "Caribbean": "🍹",
     "Indonesian": "🍢",
     "Scandinavian": "🍞",
-    "Southern": "🍗"
+    "Southern": "🍗",
+    "Other": "🌎"
 }
 
 for _, row in filtered.iterrows():
-    emoji = cat_to_emoji.get(row["categories"], "🍽️")  # fallback emoji
-
-    html = f"""
-    <div style="font-size: 24px;">
-        {emoji}
-    </div>
-    """
-
+    emoji = cat_to_emoji.get(row["categories_grouped"], "🍽️")
+    html = f"<div style='font-size:20px'>{emoji}</div>"
     icon = folium.DivIcon(html=html)
-
+    
+    # Popup now shows name + stars
+    popup_html = f"<b>{row['name']}</b><br>⭐ {row['stars']}<br>{row['address']}"
+    
     folium.Marker(
         [row["latitude"], row["longitude"]],
-        popup=f"<b>{row['name']}</b><br>⭐ {row['stars']}<br>{row['address']}",
-        icon = icon
-        ).add_to(m)
+        popup=popup_html,
+        icon=icon
+    ).add_to(m)
 
 st_folium(m, width=900, height=550)
 
+# -------- SELECT RESTAURANT TO SHOW REVIEWS --------
+st.subheader("Restaurant Reviews")
 
-'''
-# --- Calculate map center ---
-center_lat = df_unique["latitude"].mean()
-center_lon = df_unique["longitude"].mean()
+restaurant_names = filtered["name"].tolist()
+selected_restaurant = st.selectbox("Select a restaurant to see reviews:", restaurant_names)
 
-# --- Create Folium map ---
-m = folium.Map(location=[center_lat, center_lon],
-               zoom_start=12,
-               tiles="OpenStreetMap")
+# Filter reviews
+business_id = filtered[filtered["name"] == selected_restaurant]["business_id"].values[0]
+restaurant_reviews = df_rev[df_rev["business_id"] == business_id]
 
-marker_cluster = MarkerCluster().add_to(m)
-
-popup_cols = st.multiselect(
-    "Choose columns to show in popup:",
-    df_unique.columns.tolist(),
-    default=[c for c in ["name", "categories", "address"] if c in df_unique.columns]
-)
-
-# --- Helper for popup HTML ---
-def make_popup(row):
-    if not popup_cols:
-        return ""
-    return "<br>".join([f"<b>{col}:</b> {row[col]}" for col in popup_cols if col in df_unique.columns])
-
-# --- Add markers ---
-for _, row in df_unique.iterrows():
-    lat = row["latitude"]
-    lon = row["longitude"]
-
-    popup_html = make_popup(row)
-    folium.Marker(
-        location=[lat, lon],
-        popup=popup_html if popup_html else None
-    ).add_to(marker_cluster)
-
-# --- Display map ---
-st.subheader("Yelp Businesses Map")
-st_folium(m, height=600, width=900)
-
-# --- Table --- 
-left_col, right_col = st.columns([1, 3])   # adjust width as needed
-
-with left_col:
-    st.subheader("Filters")
-    selected_category = st.selectbox(
-        "Choose a category:",
-        sorted(df["categories"].unique())
+# Optional: Filter reviews by star rating
+if not restaurant_reviews.empty:
+    min_review_star, max_review_star = st.slider(
+        "Filter reviews by star rating",
+        float(restaurant_reviews["stars"].min()),
+        float(restaurant_reviews["stars"].max()),
+        (float(restaurant_reviews["stars"].min()), float(restaurant_reviews["stars"].max())),
+        step=0.5
     )
+    restaurant_reviews = restaurant_reviews[
+        restaurant_reviews["stars"].between(min_review_star, max_review_star)
+    ]
 
-filtered = df_unique[df_unique["categories"] == selected_category][["name", "stars", "address"]]
+# Display reviews in separate paragraphs with quotes
+if restaurant_reviews.empty:
+    st.write("No reviews available.")
+else:
+    #for r in restaurant_reviews["text"].tolist():
+        #st.markdown(f'"{r}"  \n\n') 
+    reviews_html = "<div style='height:500px; overflow-y:scroll; border:1px solid #ccc; padding:10px;'>"
+    for _, r in restaurant_reviews.iterrows():
+        review_text = r["text"]
+        review_stars = r["stars"]
+        reviews_html += f"<p>⭐ {review_stars}<br>\"{review_text}\"</p>"
+    reviews_html += "</div>"
 
-# ---- Table on the right ----
-with right_col:
-    st.subheader(f"Restaurants in **{selected_category}**")
-    st.dataframe(filtered, use_container_width=True)
-'''
+    st.markdown(reviews_html, unsafe_allow_html=True)
