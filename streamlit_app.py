@@ -161,7 +161,7 @@ if restaurant_reviews.empty:
 else:
     #for r in restaurant_reviews["text"].tolist():
         #st.markdown(f'"{r}"  \n\n') 
-    reviews_html = "<div style='height:500px; overflow-y:scroll; border:1px solid #ccc; padding:10px;'>"
+    reviews_html = "<div style='height:600px; overflow-y:scroll; border:1px solid #ccc; padding:10px;'>"
     for _, r in restaurant_reviews.iterrows():
         review_text = r["text"]
         review_stars = r["stars"]
