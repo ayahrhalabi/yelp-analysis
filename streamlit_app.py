@@ -6,10 +6,11 @@ from streamlit_folium import st_folium
 from io import BytesIO
 import re
 
-st.title("Santa Barbara Restaurant Analysis")
+st.title("Santa Barbara Restaurant Navigator")
 st.write(
-    "This webpage contains visualizations for restaurants from the Yelp dataset "
-    "in Santa Barbara."
+    " Welcome! This is a simple web application of some restaurents in Santa Barabara. You can select your desired cuisine " \
+        "and star rating, and an interactive map will be populated with those settings." \
+        "You can also view the reviews of a specific retsuarent at the bottom of the webpage to learn more about the place"
 )
 
 # -------- Load Data from HuggingFace --------
@@ -56,7 +57,13 @@ st.subheader("Restaurants")
 st.dataframe(
     filtered[["name", "address", "postal_code", "stars"]],
     hide_index=True,
-    use_container_width=True
+    use_container_width=True,
+    column_config={
+    "name": "Name", # This changes the display name
+    "address": "Address",
+    "postal_code":"Postal Code",
+    "stars": "Stars"
+    }
 )
 
 # -------- MAP UNDER TABLE ----------
@@ -163,7 +170,7 @@ else:
     for _, r in restaurant_reviews.iterrows():
         review_text = r["text"]
         review_stars = r["stars"]
-        reviews_html += f"<p>⭐ {review_stars}<br>\"{review_text}\"</p>"
+        reviews_html += f"<p>⭐ {review_stars}<br>\"{review_text}\"<p> 😂{r['funny']} 🤔{r['useful']} 😎{r['cool']}"
     reviews_html += "</div>"
 
     st.markdown(reviews_html, unsafe_allow_html=True)
