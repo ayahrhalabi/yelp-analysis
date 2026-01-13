@@ -57,7 +57,8 @@ st.subheader("Restaurants")
 st.dataframe(
     filtered[["name", "address", "postal_code", "stars"]],
     hide_index=True,
-    use_container_width=True,
+    #use_container_width=True,
+    width='stretch',
     column_config={
     "name": "Name", # This changes the display name
     "address": "Address",
